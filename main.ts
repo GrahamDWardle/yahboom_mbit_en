@@ -9,7 +9,7 @@ load dependency
 
 //% color="#C814B8" weight=25 icon="\uf1d4"
 namespace mbit_Display {
-    
+
     export enum enColor {
 
         //% blockId="OFF" block="off"
@@ -31,11 +31,11 @@ namespace mbit_Display {
 
     }
     export enum enLED1 {
-        
+
         //% blockId="OFF" block="off"
         OFF = 0,
         //% blockId="ON" block="on"
-        ON =1
+        ON = 1
     }
 
     //% blockId=mbit_LED1 block="LED1|pin %pin|value %value"
@@ -154,7 +154,7 @@ namespace mbit_Display {
         }
 
     }
-   
+
 }
 /*****************************************************************************************************************************************
  *  传感器类 ***************************************************************************************************************************** 
@@ -176,7 +176,7 @@ namespace mbit_Sensor {
         //% blockId="NoVoice" block="undetected"
         NoGet = 1
     }
-    
+
 
     //% blockId=mbit_Voice_Sensor block="Voice_Sensor|pin %pin|value %value"
     //% weight=100
@@ -228,11 +228,11 @@ namespace mbit_Sensor {
     //% name.fieldEditor="gridpicker" name.fieldOptions.columns=4
     export function IR_Send(pin: DigitalPin): void {
 
-        
+
         IR_send_38k();
 
     }
-   
+
     //% blockId=mbit_ultrasonic block="Ultrasonic|Trig %Trig|Echo %Echo"
     //% color="#87CEEB"
     //% weight=100
@@ -250,7 +250,7 @@ namespace mbit_Sensor {
 
         // read pulse
         let d = pins.pulseIn(Echo, PulseValue.High, 23200);
-        return  Math.floor(d / 58);
+        return Math.floor(d / 58);
     }
 }
 
@@ -364,7 +364,7 @@ namespace mbit_Input {
             return false;
         }
 
-    }  
+    }
 }
 
 /*****************************************************************************************************************************************
@@ -432,6 +432,74 @@ namespace mbit_Motor {
 //% color="#006400" weight=20 icon="\uf1b9"
 namespace mbit_Robot {
 
+    class AxisMotion {
+        private Accel: number = 0;
+        private accelcount: number = 0;
+        private Speed: number = 0;
+        private Velocity: number = 0;
+
+        SetSpeed(speed: number) {
+            this.Speed = speed;
+        }
+
+        GetVelocity(): number {
+            return this.Velocity;
+        }
+
+        DoSlowDown(step: number): boolean {
+            let changed: boolean = false;
+            let diff = this.Speed - this.Velocity;
+            if (diff > 0) {
+                this.UpdateAccel(diff, step);
+                this.Velocity -= this.Accel;
+                changed = true;
+            }
+            return changed;
+        }
+
+        DoSpeedUp(step: number): boolean {
+            let changed: boolean = false;
+            let diff = this.Velocity - this.Speed;
+            if (diff > 0) {
+                this.UpdateAccel(diff, step);
+                this.Velocity += this.Accel;
+                changed = true;
+                return changed;
+            }
+        }
+
+        UpdateAccel(diff: number, step: number): void {
+            let limit = step * this.accelcount * (this.accelcount + 1) / 2;
+            if (diff < limit) {
+                if (this.Accel + diff < step) {
+                    this.Accel += diff;
+                    this.accelcount += (diff / step);
+                }
+                else {
+                    this.Accel += step;
+                    this.accelcount++;
+                }
+            }
+            else {
+                limit = step * this.accelcount * (this.accelcount - 1) / 2;
+                if (diff < limit) {
+                    // Slow down acceleration 
+                    if (diff < step) {
+                        this.Accel = diff
+                    }
+                    else {
+                        this.Accel -= step;
+                        this.accelcount--;
+                    }
+                }
+                else {
+                    let change = (diff - limit) / (this.accelcount + 1);
+                    this.Accel += change;
+                    this.accelcount += (change / step);
+                }
+            }
+        }
+    }
     const PCA9685_ADD = 0x41
     const MODE1 = 0x00
     const MODE2 = 0x01
@@ -451,8 +519,21 @@ namespace mbit_Robot {
 
     const PRESCALE = 0xFE
 
+    export enum MotionType {
+        //% blockId="Instant_Mode" block="Instant Mode"
+        Instant_Mode = 0,
+        //% blockId="S_Mode" block="S-Mode"
+        S_Mode = 0,
+
+    }
+
     let initialized = false
     let yahStrip: neopixel.Strip;
+    let motionMode: MotionType = MotionType.Instant_Mode;
+    let forwardLeft: AxisMotion = new AxisMotion();
+    let forwardRight: AxisMotion = new AxisMotion();
+    let backLeft: AxisMotion = new AxisMotion();
+    let backRight: AxisMotion = new AxisMotion();
 
     export enum enColor {
 
@@ -472,10 +553,9 @@ namespace mbit_Robot {
         Pinkish,
         //% blockId="Yellow" block="yellow"
         Yellow,
-
     }
-    export enum enMusic {
 
+    export enum enMusic {
         dadadum = 0,
         entertainer,
         prelude,
@@ -513,7 +593,7 @@ namespace mbit_Robot {
         Black = 1
 
     }
-    
+
     export enum enAvoidState {
         //% blockId="OBSTACLE" block="with obstacles"
         OBSTACLE = 0,
@@ -522,9 +602,8 @@ namespace mbit_Robot {
 
     }
 
-    
     export enum enServo {
-        
+
         S1 = 1,
         S2,
         S3
@@ -604,194 +683,59 @@ namespace mbit_Robot {
 
 
     function Car_run(speed1: number, speed2: number) {
-
-        speed1 = speed1 * 16; // map 350 to 4096
-        speed2 = speed2 * 16;
-        if (speed1 >= 4096) {
-            speed1 = 4095
-        }
-        if (speed1 <= 350) {
-            speed1 = 350
-        }
-        if (speed2 >= 4096) {
-            speed2 = 4095
-        }
-        if (speed2 <= 350) {
-            speed2 = 350
-        }
-
-        setPwm(12, 0, speed1);
-        setPwm(13, 0, 0);
-
-        setPwm(15, 0, speed2);
-        setPwm(14, 0, 0);
-        //pins.digitalWritePin(DigitalPin.P16, 1);
-       // pins.analogWritePin(AnalogPin.P1, 1023-speed); //速度控制
-
-       // pins.analogWritePin(AnalogPin.P0, speed);//速度控制
-       // pins.digitalWritePin(DigitalPin.P8, 0);
+        SetSpeed(ConvertSpeed(speed1), 0, ConvertSpeed(speed2), 0);
     }
 
     function Car_back(speed1: number, speed2: number) {
-
-        speed1 = speed1 * 16; // map 350 to 4096
-        speed2 = speed2 * 16;
-        if (speed1 >= 4096) {
-            speed1 = 4095
-        }
-        if (speed1 <= 350) {
-            speed1 = 350
-        }
-        if (speed2 >= 4096) {
-            speed2 = 4095
-        }
-        if (speed2 <= 350) {
-            speed2 = 350
-        }
-
-        setPwm(12, 0, 0);
-        setPwm(13, 0, speed1);
-
-        setPwm(15, 0, 0);
-        setPwm(14, 0, speed2);
-
-        //pins.digitalWritePin(DigitalPin.P16, 0);
-        //pins.analogWritePin(AnalogPin.P1, speed); //速度控制
-
-        //pins.analogWritePin(AnalogPin.P0, 1023 - speed);//速度控制
-        //pins.digitalWritePin(DigitalPin.P8, 1);
+        SetSpeed(0, ConvertSpeed(speed1), 0, ConvertSpeed(speed2));
     }
 
     function Car_left(speed1: number, speed2: number) {
-
-        speed1 = speed1 * 16; // map 350 to 4096
-        speed2 = speed2 * 16;
-        if (speed1 >= 4096) {
-            speed1 = 4095
-        }
-        if (speed1 <= 350) {
-            speed1 = 350
-        }
-        if (speed2 >= 4096) {
-            speed2 = 4095
-        }
-        if (speed2 <= 350) {
-            speed2 = 350
-        }
-        
-        setPwm(12, 0, speed1);
-        setPwm(13, 0, 0);
-
-        setPwm(15, 0, speed2);
-        setPwm(14, 0, 0);
-
-        //pins.analogWritePin(AnalogPin.P0, speed);
-        //pins.digitalWritePin(DigitalPin.P8, 0);
-
-        //pins.digitalWritePin(DigitalPin.P16, 0);
-        //pins.digitalWritePin(DigitalPin.P1, 0);
+        SetSpeed(ConvertSpeed(speed1), 0, ConvertSpeed(speed2), 0);
     }
 
     function Car_right(speed1: number, speed2: number) {
-
-        speed1 = speed1 * 16; // map 350 to 4096
-        speed2 = speed2 * 16;
-        if (speed1 >= 4096) {
-            speed1 = 4095
-        }
-        if (speed1 <= 350) {
-            speed1 = 350
-        }
-        if (speed2 >= 4096) {
-            speed2 = 4095
-        }
-        if (speed2 <= 350) {
-            speed2 = 350
-        }
-        
-        setPwm(12, 0, speed1);
-        setPwm(13, 0, 0);
-
-        setPwm(15, 0, speed2);
-        setPwm(14, 0, 0);
-        //pins.digitalWritePin(DigitalPin.P0, 0);
-        //pins.digitalWritePin(DigitalPin.P8, 0);
-
-        //pins.digitalWritePin(DigitalPin.P16, 1);
-       // pins.analogWritePin(AnalogPin.P1, 1023 - speed);
+        SetSpeed(ConvertSpeed(speed1), 0, ConvertSpeed(speed2), 0);
     }
 
     function Car_stop() {
-       
-        setPwm(12, 0, 0);
-        setPwm(13, 0, 0);
 
-        setPwm(15, 0, 0);
-        setPwm(14, 0, 0);
-        //pins.digitalWritePin(DigitalPin.P0, 0);
-        //pins.digitalWritePin(DigitalPin.P8, 0);
-        //pins.digitalWritePin(DigitalPin.P16, 0);
-        //pins.digitalWritePin(DigitalPin.P1, 0);
+        SetSpeed(0, 0, 0, 0);
     }
 
     function Car_spinleft(speed1: number, speed2: number) {
+        SetSpeed(0, ConvertSpeed(speed1), ConvertSpeed(speed2), 0);
+    }
 
-        speed1 = speed1 * 16; // map 350 to 4096
-        speed2 = speed2 * 16;
-        if (speed1 >= 4096) {
-            speed1 = 4095
+    function Car_spinright(speedR: number, speedL: number) {
+        SetSpeed(ConvertSpeed(speedR), 0, 0, ConvertSpeed(speedL));
+    }
+
+    function SetSpeed(forwardR: number, backR: number, forwardL: number, backL) {
+        if (motionMode == MotionType.Instant_Mode) {
+            setPwm(12, 0, forwardR);
+            setPwm(13, 0, backR);
+
+            setPwm(15, 0, forwardL);
+            setPwm(14, 0, backL);
         }
-        if (speed1 <= 350) {
-            speed1 = 350
+        else {
+            forwardRight.SetSpeed(forwardR);
+            backRight.SetSpeed(backR);
+            forwardLeft.SetSpeed(forwardL);
+            backLeft.SetSpeed(backL);
         }
-        if (speed2 >= 4096) {
-            speed2 = 4095
+    }
+
+    function ConvertSpeed(speed: number) {
+        speed = speed * 16; // map 350 to 4096
+        if (speed >= 4096) {
+            speed = 4095;
         }
-        if (speed2 <= 350) {
-            speed2 = 350
-        }        
-        
-        setPwm(12, 0, 0);
-        setPwm(13, 0, speed1);
-
-        setPwm(15, 0, speed2);
-        setPwm(14, 0, 0);
-
-        //pins.analogWritePin(AnalogPin.P0, speed);
-        //pins.digitalWritePin(DigitalPin.P8, 0);
-
-        //pins.digitalWritePin(DigitalPin.P16, 0);
-        //pins.analogWritePin(AnalogPin.P1, speed);
-    } 
-
-    function Car_spinright(speed1: number, speed2: number) {
-
-        speed1 = speed1 * 16; // map 350 to 4096
-        speed2 = speed2 * 16;
-        if (speed1 >= 4096) {
-            speed1 = 4095
+        if (speed <= 350) {
+            speed = 350;
         }
-        if (speed1 <= 350) {
-            speed1 = 350
-        }
-        if (speed2 >= 4096) {
-            speed2 = 4095
-        }
-        if (speed2 <= 350) {
-            speed2 = 350
-        }    
-            
-        setPwm(12, 0, speed1);
-        setPwm(13, 0, 0);
-
-        setPwm(15, 0, 0);
-        setPwm(14, 0, speed2);
-        //pins.analogWritePin(AnalogPin.P0, 1023-speed);
-        //pins.digitalWritePin(DigitalPin.P8, 1);
-
-        //pins.digitalWritePin(DigitalPin.P16, 1);
-        //pins.analogWritePin(AnalogPin.P1, 1023-speed);
-
+        return speed;
     }
 
     /**
@@ -887,15 +831,15 @@ namespace mbit_Robot {
     //% color="#C814B8"
     //% name.fieldEditor="gridpicker" name.fieldOptions.columns=4
     export function RGB_Car_Program(): neopixel.Strip {
-         
+
         if (!yahStrip) {
             yahStrip = neopixel.create(DigitalPin.P16, 3, NeoPixelMode.RGB);
         }
-        return yahStrip;  
+        return yahStrip;
     }
 
 
-	//% blockId=mbit_ultrasonic_car block="ultrasonic return distance(cm)"
+    //% blockId=mbit_ultrasonic_car block="ultrasonic return distance(cm)"
     //% color="#006400"
     //% weight=98
     //% blockGap=10
@@ -912,7 +856,7 @@ namespace mbit_Robot {
 
         // read pulse
         let d = pins.pulseIn(DigitalPin.P15, PulseValue.High, 43200);
-        return  Math.floor(d / 58);
+        return Math.floor(d / 58);
     }
 
     //% blockId=mbit_Music_Car block="Music_Car|%index"
@@ -971,11 +915,11 @@ namespace mbit_Robot {
         switch (value) {
             case enAvoidState.OBSTACLE: {
                 if (pins.analogReadPin(AnalogPin.P3) < 800) {
-                
+
                     temp = true;
                     setPwm(8, 0, 0);
                 }
-                else {                 
+                else {
                     temp = false;
                     setPwm(8, 0, 4095);
                 }
@@ -997,7 +941,6 @@ namespace mbit_Robot {
         }
         pins.digitalWritePin(DigitalPin.P9, 1);
         return temp;
-
     }
     //% blockId=mbit_Line_Sensor block="Line_Sensor|direct %direct|value %value"
     //% weight=94
@@ -1092,6 +1035,47 @@ namespace mbit_Robot {
             case CarState.Car_Stop: Car_stop(); break;
             case CarState.Car_SpinLeft: Car_spinleft(speed1, speed2); break;
             case CarState.Car_SpinRight: Car_spinright(speed1, speed2); break;
+        }
+    }
+    //% blockId=mbit_SetS_ModeSpeed block="SetS_ModeSpeed|%mode"
+    //% weight=91
+    //% blockGap=10
+    //% color="#006400"
+    //% name.fieldEditor="gridpicker" name.fieldOptions.columns=10
+    export function SetS_ModeSpeed(mode: MotionType): void {
+        motionMode = mode;
+    }
+
+    //% blockId=mbit_SetS_ModeSpeed block="UpdateS_Mode|%step"
+    //% weight=91
+    //% blockGap=10
+    //% color="#006400"
+    //% name.fieldEditor="gridpicker" name.fieldOptions.columns=10
+    export function UpdateS_Mode(step: number) {
+        if (motionMode == MotionType.S_Mode) {
+            if (step < 1 || step > 255) {
+                step = 100;
+            }
+
+            // Do slow down first.
+            let changed = forwardLeft.DoSlowDown(step)
+                || forwardRight.DoSlowDown(step)
+                || backLeft.DoSlowDown(step)
+                || backRight.DoSlowDown(step);
+            if (!changed) {
+                changed = forwardLeft.DoSpeedUp(step)
+                    || forwardRight.DoSpeedUp(step)
+                    || backLeft.DoSpeedUp(step)
+                    || backRight.DoSpeedUp(step);
+            }
+
+            if (changed) {
+                // Update hardware
+                setPwm(12, 0, forwardRight.GetVelocity());
+                setPwm(13, 0, backRight.GetVelocity());
+                setPwm(15, 0, forwardLeft.GetVelocity());
+                setPwm(14, 0, backLeft.GetVelocity());
+            }
         }
     }
 }

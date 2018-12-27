@@ -5,3 +5,9 @@ yotta_targets
 pxt_modules
 *.db
 *.tgz
+/.vs/yahboom_mbit_en/v15/.suo
+/.vs/yahboom_mbit_en/v15
+/.vs/slnx.sqlite
+/.vs/config/applicationhost.config
+/.vs/config
+/.vs
